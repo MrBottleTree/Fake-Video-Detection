@@ -1,1 +1,7 @@
 credentials.xlsx
+*.pem
+__pycache__/
+*.pyc
+db.sqlite3
+venv/
+.env
