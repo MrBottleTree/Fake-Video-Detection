@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-qs1j*h70@_7lcykfgc!8ge&g8j-jgs)2^2)4_rg*c1qjq57gt=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -74,9 +74,18 @@ WSGI_APPLICATION = 'AgenticAI.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": "agenticai",
+        "USER": "admin",
+        "PASSWORD": "12345678",
+        "HOST": "goa-police-database.c7g02iyweo29.ap-south-1.rds.amazonaws.com",
+        "PORT": "3306",
+        "CONN_MAX_AGE": 300,
+        "OPTIONS": {
+            "charset": "utf8mb4",
+            "init_command": "SET sql_mode='STRICT_TRANS_TABLES', time_zone='+05:30'",
+        },
     }
 }
 
