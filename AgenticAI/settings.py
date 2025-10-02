@@ -11,19 +11,21 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
+load_dotenv(dotenv_path=BASE_DIR / '.env')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-qs1j*h70@_7lcykfgc!8ge&g8j-jgs)2^2)4_rg*c1qjq57gt='
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG') == 'True'
 
 ALLOWED_HOSTS = ['*']
 
@@ -73,21 +75,29 @@ WSGI_APPLICATION = 'AgenticAI.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": "agenticai",
-        "USER": "admin",
-        "PASSWORD": "12345678",
-        "HOST": "goa-police-database.c7g02iyweo29.ap-south-1.rds.amazonaws.com",
-        "PORT": "3306",
-        "CONN_MAX_AGE": 300,
-        "OPTIONS": {
-            "charset": "utf8mb4",
-            "init_command": "SET sql_mode='STRICT_TRANS_TABLES', time_zone='+05:30'",
-        },
+if os.getenv('PRODUCTION') == 'True':
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": "agenticai",
+            "USER": "admin",
+            "PASSWORD": "12345678",
+            "HOST": "goa-police-database.c7g02iyweo29.ap-south-1.rds.amazonaws.com",
+            "PORT": "3306",
+            "CONN_MAX_AGE": 300,
+            "OPTIONS": {
+                "charset": "utf8mb4",
+                "init_command": "SET sql_mode='STRICT_TRANS_TABLES', time_zone='+05:30'",
+            },
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
