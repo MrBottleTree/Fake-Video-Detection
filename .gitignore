@@ -5,3 +5,11 @@ __pycache__/
 db.sqlite3
 venv/
 .env
+*/migrations/
+media/
+static/
+staticfiles/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
