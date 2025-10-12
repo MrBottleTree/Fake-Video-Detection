@@ -44,7 +44,7 @@ def _dispatch(run, node_id, inputs):
         nig.attempt_id = attempt
         nig.save()
 
-    _fire_node(ni)
+    _fire_node(nig)
 
 def start_run(version, initial_inputs):
     gdef = GraphDefinition.objects.get(version=version)
