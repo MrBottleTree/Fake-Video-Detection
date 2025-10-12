@@ -112,6 +112,7 @@ class NodeInstance(models.Model):
     def __str__(self):
         return f"Node {self.run.graph.version}:{self.run.run_id}:{self.node_id} - {self.status}"
 
+# models.py (only the Fire class shown)
 class Fire(models.Model):
     id = models.AutoField(primary_key=True)
     attempts = models.IntegerField(default=0)
@@ -124,7 +125,7 @@ class Fire(models.Model):
 
     def _safe_post(self, url, payload, timeout):
         try:
-            requests.post(url, json=payload, timeout=timeout)
+            requests.post(url, json=payload or {}, timeout=timeout)
         except Exception:
             pass
 
@@ -132,18 +133,19 @@ class Fire(models.Model):
         self.node_instance = node
         self.attempts += 1
         self.save()
-        dependent_ids = node.run.graph.dependents_of(node.node_id)
-        dependent_nodes = node.run.nodes.filter(node_id__in=dependent_ids)
-
-        for dep in dependent_nodes:
-            if dep.status != NodeInstance.NodeStatus.SUCCEEDED:
-                print("Dependent node not succeeded:", dep.node_id)
-                return False
 
         url = node.run.graph.get_node_url(node.node_id)
         if not url:
-            print("No URL for node", node.node_id)
             return False
 
-        self.post(url, node.inputs)
+        callback_url = (node.inputs or {}).get("_callback_url") or "/callback"
+
+        payload = {
+            "run_id": node.run.run_id,
+            "node_id": node.node_id,
+            "attempt_id": getattr(node, "attempt_id", "") or "",
+            "callback_url": callback_url,
+            "inputs": (node.inputs or {}).get("_payload", node.inputs or {}),
+        }
+        self.post(url, payload, timeout=0.5)
         return True
