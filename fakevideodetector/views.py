@@ -1,4 +1,3 @@
-# views.py
 import json
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
