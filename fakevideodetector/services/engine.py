@@ -1,7 +1,6 @@
 import uuid
 from django.db import transaction
 from django.utils import timezone
-from typing import Dict, List
 from ..models import GraphDefinition, GraphRun, NodeInstance, Fire
 
 def _parents(gdef, node_id):

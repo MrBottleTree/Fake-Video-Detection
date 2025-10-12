@@ -69,7 +69,6 @@ class GraphDefinition(models.Model):
             return None
         return node.get("url")
 
-
 class GraphRun(models.Model):
     class Status(models.TextChoices):
         RUNNING = "running", "Running"
@@ -85,7 +84,6 @@ class GraphRun(models.Model):
 
     def __str__(self):
         return f"Running {self.graph.version}:{self.run_id} - {self.status}"
-
 
 class NodeInstance(models.Model):
     class NodeStatus(models.TextChoices):
