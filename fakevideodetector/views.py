@@ -5,6 +5,9 @@ from django.views.decorators.http import require_POST
 from django.urls import reverse
 from django.utils.timezone import now
 from .services.engine import start_run, complete_and_progress
+from django.shortcuts import render
+from django.views.decorators.http import require_http_methods
+from .models import GraphDefinition
 
 def _json(request):
     try:
@@ -16,7 +19,6 @@ def _json(request):
 @csrf_exempt
 def start_graph(request):
     data = _json(request)
-    print(data)
     if data is None:
         return HttpResponseBadRequest("Invalid JSON")
 
@@ -32,7 +34,6 @@ def start_graph(request):
 @csrf_exempt
 def node_callback(request):
     data = _json(request)
-    print(f"received callback: {data}")
     if data is None:
         return HttpResponseBadRequest("Invalid JSON")
 
@@ -47,8 +48,47 @@ def node_callback(request):
     error = data.get("error")
 
     if result is not None and not isinstance(result, dict):
-        print("##Bad response")
         return HttpResponseBadRequest("quark :)")
-    print(f"Result: {result}")
     complete_and_progress(run_id, node_id, attempt_id, result, error=error)
     return JsonResponse({"ok": True, "ts": now().isoformat()})
+
+def graph_designer(request):
+    return render(request, "fakevideodetector/designer.html")
+
+@require_http_methods(["GET"])
+def graph_list(request):
+    versions = GraphDefinition.objects.values_list("version", flat=True).order_by("-id")
+    return JsonResponse({"versions": list(versions)})
+
+@require_http_methods(["GET", "POST"])
+@csrf_exempt
+def graph_get_or_save(request, version):
+    if request.method == "GET":
+        try:
+            graph_def = GraphDefinition.objects.get(version=version)
+            return JsonResponse({
+                "version": version,
+                "spec": graph_def.spec
+            })
+        except GraphDefinition.DoesNotExist:
+            return JsonResponse({"error": "Not found"}, status=404)
+    
+    elif request.method == "POST":
+        try:
+            body = json.loads(request.body)
+            spec = body.get("spec")
+            if not spec:
+                return JsonResponse({"error": "Missing spec"}, status=400)
+            
+            graph_def, created = GraphDefinition.objects.update_or_create(
+                version=version,
+                defaults={
+                    "spec": spec,
+                    "description": "",
+                }
+            )
+            return JsonResponse({"ok": True, "created": created})
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)

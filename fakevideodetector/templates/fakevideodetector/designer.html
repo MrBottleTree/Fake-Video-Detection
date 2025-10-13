@@ -1,0 +1,450 @@
+{% csrf_token %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Graph Designer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: monospace; background: #fff; color: #000; }
+        .container { display: flex; flex-direction: column; height: 100vh; }
+        header { background: #333; color: #fff; padding: 10px; border-bottom: 1px solid #000; }
+        h1 { font-size: 16px; margin-bottom: 5px; }
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+        input, select, textarea, button { padding: 4px; font-family: monospace; font-size: 12px; }
+        button { background: #333; color: #fff; border: 1px solid #000; cursor: pointer; }
+        button:hover { background: #555; }
+        .main { display: flex; flex: 1; gap: 10px; padding: 10px; overflow: hidden; }
+        .panel { border: 1px solid #000; padding: 10px; overflow-y: auto; flex: 1; }
+        .left { width: 30%; }
+        .center { width: 40%; }
+        .right { width: 30%; }
+        h2 { font-size: 12px; margin-bottom: 8px; border-bottom: 1px solid #000; padding-bottom: 4px; }
+        .node-row { border: 1px solid #ccc; padding: 8px; margin-bottom: 5px; background: #f9f9f9; }
+        .node-title { font-weight: bold; margin-bottom: 5px; display: flex; justify-content: space-between; }
+        .node-title button { padding: 2px 4px; font-size: 11px; }
+        .node-field { margin-bottom: 4px; display: flex; gap: 4px; }
+        .node-field label { width: 60px; font-size: 11px; }
+        .node-field input { flex: 1; }
+        .deps-check { font-size: 11px; margin-bottom: 2px; }
+        .deps-check input { margin-right: 3px; }
+        .graph-info { background: #f0f0f0; border: 1px solid #ccc; padding: 8px; font-size: 11px; line-height: 1.5; }
+        .graph-info div { margin-bottom: 5px; }
+        #json-preview { width: 100%; height: 120px; padding: 5px; border: 1px solid #000; font-size: 10px; }
+        .btn-group { display: flex; gap: 5px; flex-direction: column; margin-top: 10px; }
+        .btn-group button { width: 100%; }
+        input[type="radio"] { margin-right: 4px; }
+        .start-radio { margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Agentic Graph Designer</h1>
+            <div class="controls">
+                <label>Version: <input type="text" id="new-version" placeholder="v1" style="width: 80px;"></label>
+                <select id="version-dropdown" style="width: 120px;">
+                    <option value="">-- New --</option>
+                </select>
+                <button onclick="loadSelectedVersion()">Load</button>
+                <button onclick="clearGraph()">Clear</button>
+            </div>
+        </header>
+
+        <div class="main">
+            <div class="panel left">
+                <h2>Nodes</h2>
+                <div id="node-list"></div>
+                <div style="margin-top: 10px;">
+                    <input type="text" id="new-node-id" placeholder="node_id" style="width: 100%; margin-bottom: 5px;">
+                    <button onclick="addNode()" style="width: 100%;">Add Node</button>
+                </div>
+            </div>
+
+            <div class="panel center">
+                <h2>Graph Map</h2>
+                <div class="graph-info" id="graph-info"></div>
+            </div>
+
+            <div class="panel right">
+                <h2>Start Node</h2>
+                <div id="start-node-radio" class="start-radio"></div>
+
+                <h2>JSON</h2>
+                <textarea id="json-preview" readonly></textarea>
+
+                <div class="btn-group">
+                    <button onclick="validateAndShow()">Validate</button>
+                    <button onclick="importJSON()">Import JSON</button>
+                    <button onclick="exportJSON()">Export JSON</button>
+                    <button onclick="saveToBackend()">Save to Backend</button>
+                </div>
+                <div id="message" style="margin-top: 10px; padding: 5px; border: 1px solid #000; font-size: 11px; display: none; background: #ffe0e0;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+let graph = { version: "1.0", start: null, nodes: {} };
+const EXAMPLE_SPEC = {
+    version: "1.0",
+    start: "n1",
+    nodes: {
+        n1: { type: "http", url: "https://api.example.com/step1", depends_on: [] },
+        n2: { type: "http", url: "https://api.example.com/step2", depends_on: ["n1"] }
+    }
+};
+
+document.addEventListener("DOMContentLoaded", () => {
+    graph = { version: "1.0", start: null, nodes: {} };
+    renderAll();
+    fetchVersions();
+});
+
+function fetchVersions() {
+    fetch("/api/definitions/", { method: "GET" })
+        .then(r => r.json())
+        .then(data => {
+            const dropdown = document.getElementById("version-dropdown");
+            dropdown.innerHTML = '<option value="">-- New --</option>';
+            (data.versions || []).forEach(v => {
+                const opt = document.createElement("option");
+                opt.value = v;
+                opt.textContent = v;
+                dropdown.appendChild(opt);
+            });
+        })
+        .catch(e => showMessage("Failed to load versions", true));
+}
+
+function loadSelectedVersion() {
+    const dropdown = document.getElementById("version-dropdown");
+    const version = dropdown.value;
+    if (!version) {
+        showMessage("Select a version", true);
+        return;
+    }
+    fetch(`/api/definitions/${version}/`, { method: "GET" })
+        .then(r => {
+            if (!r.ok) throw new Error("Not found");
+            return r.json();
+        })
+        .then(data => {
+            loadGraph(data.spec);
+            graph.version = version;
+            document.getElementById("new-version").value = version;
+            renderAll();
+            showMessage(`Loaded: ${version}`);
+        })
+        .catch(e => showMessage("Load failed: " + e.message, true));
+}
+
+function loadGraph(spec) {
+    graph = JSON.parse(JSON.stringify(spec));
+}
+
+function serializeGraph() {
+    return JSON.parse(JSON.stringify(graph));
+}
+
+function validateGraph(g) {
+    const errors = [];
+    if (!g.start) errors.push("No start node");
+    if (!g.nodes[g.start]) errors.push(`Start '${g.start}' missing`);
+    
+    for (const [nodeId, node] of Object.entries(g.nodes || {})) {
+        if (!node.url || node.url.trim() === "") errors.push(`'${nodeId}' no URL`);
+        (node.depends_on || []).forEach(dep => {
+            if (!g.nodes[dep]) errors.push(`'${nodeId}' → '${dep}' missing`);
+        });
+    }
+    return { ok: errors.length === 0, errors };
+}
+
+function addNode() {
+    const input = document.getElementById("new-node-id");
+    const nodeId = input.value.trim();
+    if (!nodeId) {
+        showMessage("Enter node ID", true);
+        return;
+    }
+    if (graph.nodes[nodeId]) {
+        showMessage("Node exists", true);
+        return;
+    }
+    graph.nodes[nodeId] = { type: "http", url: "https://", depends_on: [] };
+    input.value = "";
+    renderAll();
+}
+
+function deleteNode(nodeId) {
+    delete graph.nodes[nodeId];
+    if (graph.start === nodeId) graph.start = null;
+    Object.keys(graph.nodes).forEach(id => {
+        graph.nodes[id].depends_on = graph.nodes[id].depends_on.filter(d => d !== nodeId);
+    });
+    renderAll();
+}
+
+function renameNode(oldId, newId) {
+    if (!newId.trim()) {
+        showMessage("Enter new ID", true);
+        return;
+    }
+    if (graph.nodes[newId]) {
+        showMessage("ID exists", true);
+        return;
+    }
+    graph.nodes[newId] = graph.nodes[oldId];
+    delete graph.nodes[oldId];
+    if (graph.start === oldId) graph.start = newId;
+    Object.keys(graph.nodes).forEach(id => {
+        const deps = graph.nodes[id].depends_on;
+        const idx = deps.indexOf(oldId);
+        if (idx >= 0) deps[idx] = newId;
+    });
+    renderAll();
+}
+
+function updateNodeUrl(nodeId, url) {
+    if (graph.nodes[nodeId]) graph.nodes[nodeId].url = url;
+}
+
+function setStartNode(nodeId) {
+    graph.start = nodeId;
+    renderAll();
+}
+
+function toggleDependency(nodeId, depId) {
+    const deps = graph.nodes[nodeId].depends_on;
+    const idx = deps.indexOf(depId);
+    if (idx >= 0) {
+        deps.splice(idx, 1);
+    } else {
+        deps.push(depId);
+    }
+    renderAll();
+}
+
+function clearGraph() {
+    graph = { version: "1.0", start: null, nodes: {} };
+    document.getElementById("new-version").value = "";
+    renderAll();
+}
+
+function renderAll() {
+    renderNodeList();
+    renderGraphInfo();
+    renderStartNodeRadios();
+    updateJsonPreview();
+}
+
+function renderNodeList() {
+    const list = document.getElementById("node-list");
+    list.innerHTML = "";
+    
+    Object.keys(graph.nodes).sort().forEach(nodeId => {
+        const node = graph.nodes[nodeId];
+        const div = document.createElement("div");
+        div.className = "node-row";
+        
+        const title = document.createElement("div");
+        title.className = "node-title";
+        const newIdInput = document.createElement("input");
+        newIdInput.type = "text";
+        newIdInput.value = nodeId;
+        newIdInput.style.width = "100px";
+        newIdInput.onblur = (e) => {
+            if (e.target.value !== nodeId) renameNode(nodeId, e.target.value);
+        };
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "Delete";
+        delBtn.onclick = () => deleteNode(nodeId);
+        title.appendChild(newIdInput);
+        title.appendChild(delBtn);
+        div.appendChild(title);
+        
+        const urlField = document.createElement("div");
+        urlField.className = "node-field";
+        const urlLabel = document.createElement("label");
+        urlLabel.textContent = "URL";
+        const urlInput = document.createElement("input");
+        urlInput.type = "text";
+        urlInput.value = node.url;
+        urlInput.onchange = (e) => updateNodeUrl(nodeId, e.target.value);
+        urlField.appendChild(urlLabel);
+        urlField.appendChild(urlInput);
+        div.appendChild(urlField);
+        
+        const depsLabel = document.createElement("div");
+        depsLabel.style.fontSize = "11px";
+        depsLabel.style.fontWeight = "bold";
+        depsLabel.textContent = "Depends on:";
+        div.appendChild(depsLabel);
+        
+        const allOtherNodes = Object.keys(graph.nodes).filter(id => id !== nodeId).sort();
+        if (allOtherNodes.length === 0) {
+            const noOther = document.createElement("div");
+            noOther.style.fontSize = "11px";
+            noOther.style.color = "#999";
+            noOther.textContent = "(no other nodes)";
+            div.appendChild(noOther);
+        } else {
+            allOtherNodes.forEach(otherId => {
+                const chkDiv = document.createElement("div");
+                chkDiv.className = "deps-check";
+                const chk = document.createElement("input");
+                chk.type = "checkbox";
+                chk.checked = node.depends_on.includes(otherId);
+                chk.onchange = () => toggleDependency(nodeId, otherId);
+                const lbl = document.createElement("label");
+                lbl.style.marginLeft = "3px";
+                lbl.textContent = otherId;
+                chkDiv.appendChild(chk);
+                chkDiv.appendChild(lbl);
+                div.appendChild(chkDiv);
+            });
+        }
+        
+        list.appendChild(div);
+    });
+}
+
+function renderGraphInfo() {
+    const info = document.getElementById("graph-info");
+    const nodeIds = Object.keys(graph.nodes).sort();
+    
+    let html = "<strong>Nodes: " + nodeIds.length + "</strong><br>";
+    if (nodeIds.length === 0) {
+        html += "(no nodes)";
+    } else {
+        nodeIds.forEach(id => {
+            const node = graph.nodes[id];
+            const isStart = graph.start === id ? " ⭐" : "";
+            const deps = node.depends_on.length > 0 ? ` ← [${node.depends_on.join(", ")}]` : "";
+            html += `<div><strong>${id}</strong>${isStart}${deps}<br><span style="color:#666;">${node.url}</span></div>`;
+        });
+    }
+    info.innerHTML = html;
+}
+
+function renderStartNodeRadios() {
+    const container = document.getElementById("start-node-radio");
+    container.innerHTML = "";
+    
+    const nodeIds = Object.keys(graph.nodes).sort();
+    if (nodeIds.length === 0) {
+        container.innerHTML = "<span style='color:#999;'>(no nodes)</span>";
+        return;
+    }
+    
+    nodeIds.forEach(nodeId => {
+        const label = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "start-node";
+        input.value = nodeId;
+        input.checked = graph.start === nodeId;
+        input.onchange = () => setStartNode(nodeId);
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(nodeId));
+        container.appendChild(label);
+        container.appendChild(document.createElement("br"));
+    });
+}
+
+function updateJsonPreview() {
+    const preview = document.getElementById("json-preview");
+    const version = document.getElementById("new-version").value.trim() || graph.version;
+    const spec = serializeGraph();
+    spec.version = version;
+    preview.value = JSON.stringify(spec, null, 2);
+}
+
+function importJSON() {
+    const jsonStr = prompt("Paste JSON:");
+    if (!jsonStr) return;
+    try {
+        const spec = JSON.parse(jsonStr);
+        loadGraph(spec);
+        renderAll();
+        showMessage("Imported OK");
+    } catch (e) {
+        showMessage(`Bad JSON: ${e.message}`, true);
+    }
+}
+
+function exportJSON() {
+    const result = validateGraph(graph);
+    if (!result.ok) {
+        showMessage(`Invalid: ${result.errors.join("; ")}`, true);
+        return;
+    }
+    const json = JSON.stringify(serializeGraph(), null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `graph-${graph.version}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showMessage("Exported");
+}
+
+function validateAndShow() {
+    const result = validateGraph(graph);
+    if (result.ok) {
+        showMessage("✓ Valid");
+    } else {
+        showMessage(result.errors.join("; "), true);
+    }
+}
+
+function saveToBackend() {
+    const version = document.getElementById("new-version").value.trim();
+    if (!version) {
+        showMessage("Enter version name", true);
+        return;
+    }
+    
+    const result = validateGraph(graph);
+    if (!result.ok) {
+        showMessage(`Invalid: ${result.errors.join("; ")}`, true);
+        return;
+    }
+    
+    const spec = serializeGraph();
+    spec.version = version;
+    
+    const csrfToken = document.querySelector("[name=csrfmiddlewaretoken]")?.value || "";
+    
+    fetch(`/api/definitions/${version}/`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken
+        },
+        body: JSON.stringify({ spec: spec })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            showMessage(`Saved: ${version}`);
+            fetchVersions();
+        } else {
+            showMessage(`Error: ${data.error}`, true);
+        }
+    })
+    .catch(e => showMessage(`Failed: ${e}`, true));
+}
+
+function showMessage(text, isError = false) {
+    const msg = document.getElementById("message");
+    msg.textContent = text;
+    msg.style.display = "block";
+    msg.style.background = isError ? "#ffe0e0" : "#e0ffe0";
+    msg.style.color = isError ? "#c00" : "#0c0";
+    setTimeout(() => { msg.style.display = "none"; }, 3000);
+}
+    </script>
+</body>
+</html>
