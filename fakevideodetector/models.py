@@ -112,7 +112,6 @@ class NodeInstance(models.Model):
     def __str__(self):
         return f"Node {self.run.graph.version}:{self.run.run_id}:{self.node_id} - {self.status}"
 
-# models.py (only the Fire class shown)
 class Fire(models.Model):
     id = models.AutoField(primary_key=True)
     attempts = models.IntegerField(default=0)
@@ -125,27 +124,18 @@ class Fire(models.Model):
 
     def _safe_post(self, url, payload, timeout):
         try:
-            requests.post(url, json=payload or {}, timeout=timeout)
+            print(url, payload)
+            print(requests.post(url, json=payload or {}, timeout=timeout))
         except Exception:
             pass
 
-    def load_and_fire(self, node: NodeInstance):
-        self.node_instance = node
+    def load_and_fire(self):
         self.attempts += 1
         self.save()
 
-        url = node.run.graph.get_node_url(node.node_id)
+        url = self.node_instance.run.graph.get_node_url(self.node_instance.node_id)
         if not url:
             return False
 
-        callback_url = (node.inputs or {}).get("_callback_url") or "/callback"
-
-        payload = {
-            "run_id": node.run.run_id,
-            "node_id": node.node_id,
-            "attempt_id": getattr(node, "attempt_id", "") or "",
-            "callback_url": callback_url,
-            "inputs": (node.inputs or {}).get("_payload", node.inputs or {}),
-        }
-        self.post(url, payload, timeout=0.5)
+        self.post(url, self.node_instance.inputs, timeout=0.5)
         return True

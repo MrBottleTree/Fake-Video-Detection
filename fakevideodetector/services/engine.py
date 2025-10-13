@@ -3,6 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 from typing import Dict, List
 from ..models import GraphDefinition, GraphRun, NodeInstance, Fire
+import json
 
 def _parents(gdef, node_id):
     return gdef.depends_on(node_id)
@@ -11,9 +12,17 @@ def _children(gdef, node_id):
     return gdef.dependents_of(node_id)
 
 def _merge_child_inputs(existing_child_inputs, parent_outputs):
+    def deep_update(d, u):
+        for k, v in u.items():
+            if isinstance(v, dict) and isinstance(d.get(k), dict):
+                d[k] = deep_update(d.get(k, {}), v)
+            else:
+                d[k] = v
+        return d
+
     merged = dict(existing_child_inputs or {})
     if parent_outputs:
-        merged.update(parent_outputs)
+        merged = deep_update(merged, parent_outputs)
     return merged
 
 def _ready_to_run(run, node_id):
@@ -26,7 +35,7 @@ def _ready_to_run(run, node_id):
 
 def _fire_node(node):
     fire = Fire.objects.create(node_instance=node, attempts=1)
-    fire.load_and_fire(node)
+    fire.load_and_fire()
 
 def _dispatch(run, node_id, inputs):
     attempt = str(uuid.uuid4())
@@ -40,8 +49,11 @@ def _dispatch(run, node_id, inputs):
     with transaction.atomic():
         nig, _ = NodeInstance.objects.select_for_update().get_or_create(run=run, node_id=node_id, defaults={"name": node_id, "inputs": inputs, "attempt_id": attempt})
         nig.status = NodeInstance.NodeStatus.RUNNING
-        nig.inputs = inputs
         nig.attempt_id = attempt
+        inputs['run_id'] = run.run_id
+        inputs['node_id'] = node_id
+        inputs['attempt_id'] = attempt
+        nig.inputs = inputs
         nig.save()
 
     _fire_node(nig)
@@ -54,7 +66,6 @@ def start_run(version, initial_inputs):
         NodeInstance.objects.create(run=run, node_id=start, name=start, status=NodeInstance.NodeStatus.QUEUED, inputs=initial_inputs or {})
     _dispatch(run, start, initial_inputs or {})
     return run.run_id
-
 
 def complete_and_progress(run_id, node_id, attempt_id, outputs, error = None):
     with transaction.atomic():
