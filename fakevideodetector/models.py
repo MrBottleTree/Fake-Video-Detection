@@ -118,7 +118,7 @@ class Fire(models.Model):
     node_instance = models.ForeignKey(NodeInstance, on_delete=models.CASCADE, related_name="fires")
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def post(self, url, json=None, timeout=0.5):
+    def post(self, url, json=None, timeout=5):
         t = threading.Thread(target=self._safe_post, args=(url, json, timeout), daemon=True)
         t.start()
 
@@ -126,7 +126,8 @@ class Fire(models.Model):
         try:
             print(url, payload)
             print(requests.post(url, json=payload or {}, timeout=timeout))
-        except Exception:
+        except Exception as e:
+            print(f"Timeout: {e}")
             pass
 
     def load_and_fire(self):
@@ -137,5 +138,5 @@ class Fire(models.Model):
         if not url:
             return False
 
-        self.post(url, self.node_instance.inputs, timeout=0.5)
+        self.post(url, self.node_instance.inputs, timeout=5)
         return True
