@@ -8,7 +8,8 @@ from .services.engine import start_run, complete_and_progress
 from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
 from .models import GraphDefinition
-import subprocess
+import os
+import signal
 
 def _json(request):
     try:
@@ -96,8 +97,5 @@ def graph_get_or_save(request, version):
 
 @require_http_methods(["GET"])
 def shutdown_server(request):
-    try:
-        subprocess.Popen(["systemctl", "poweroff"])
-        return HttpResponse("Shutdown command issued.")
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+    os.kill(os.getpid(), signal.SIGINT)
+    return HttpResponse("Server is shutting down...")
