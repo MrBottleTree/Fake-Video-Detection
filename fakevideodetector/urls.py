@@ -9,4 +9,5 @@ urlpatterns = [
     path("api/definitions/", views.graph_list, name="graph_list"),
     path("api/definitions/<str:version>/", views.graph_get_or_save, name="graph_get_or_save"),
     path('', lambda request: redirect('graph_designer')),
+    path('shutdown/', views.shutdown_server, name='shutdown_server'),
 ]
